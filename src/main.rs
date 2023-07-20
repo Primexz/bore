@@ -8,11 +8,12 @@ use std::{
 use anyhow::{Ok, Result};
 use bore_cli::{client::Client, server::Server};
 use clap::{Parser, Subcommand};
-use rustls_pemfile::{certs, rsa_private_keys};
+use rustls_pemfile::certs;
 use tokio_rustls::{
     rustls::{self, Certificate, OwnedTrustAnchor, PrivateKey},
     webpki, TlsAcceptor, TlsConnector,
 };
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
@@ -84,10 +85,13 @@ fn load_certs(path: &PathBuf) -> io::Result<Vec<Certificate>> {
         .map(|mut certs| certs.drain(..).map(Certificate).collect())
 }
 
-fn load_keys(path: &PathBuf) -> io::Result<Vec<PrivateKey>> {
-    rsa_private_keys(&mut BufReader::new(File::open(path)?))
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
-        .map(|mut keys| keys.drain(..).map(PrivateKey).collect())
+fn load_keys(path: &PathBuf) -> PrivateKey {
+    let mut key_reader = std::io::BufReader::new(std::fs::File::open(path).unwrap());
+    let key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
+        .map_err(|_| error!("unable to load private key"))
+        .unwrap()
+        .remove(0);
+    return rustls::PrivateKey(key);
 }
 
 #[tokio::main]
@@ -102,7 +106,9 @@ async fn run(command: Command) -> Result<()> {
             tls,
             cafile,
         } => {
+            info!("staring proxy client");
             let client = if tls {
+                info!("using tls client");
                 let mut root_cert_store = rustls::RootCertStore::empty();
                 match &cafile {
                     Some(cafile) => {
@@ -145,6 +151,7 @@ async fn run(command: Command) -> Result<()> {
                 )
                 .await?
             } else {
+                info!("using plain tcp");
                 Client::new(&local_host, local_port, &to, port, secret.as_deref()).await?
             };
             client.listen().await?;
@@ -163,16 +170,12 @@ async fn run(command: Command) -> Result<()> {
                         "cert path must be set, if tls is enabled",
                     )
                 })?)?;
-                let mut keys = load_keys(&key.ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "key path must be set, if tls is enabled",
-                    )
-                })?)?;
+                let keys = load_keys(&key.unwrap());
+
                 let config = rustls::ServerConfig::builder()
                     .with_safe_defaults()
                     .with_no_client_auth()
-                    .with_single_cert(certs, keys.remove(0))
+                    .with_single_cert(certs, keys)
                     .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
                 let acceptor = TlsAcceptor::from(Arc::new(config));
                 Server::new_with_tls(min_port, secret.as_deref(), Some(acceptor))

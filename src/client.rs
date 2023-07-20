@@ -73,6 +73,7 @@ impl Client {
             auth.client_handshake(&mut stream).await?;
         }
 
+        info!("sending hello message to server");
         stream.send(ClientMessage::Hello(port)).await?;
         let remote_port = match stream.recv_timeout().await? {
             Some(ServerMessage::Hello(remote_port)) => remote_port,
@@ -106,8 +107,10 @@ impl Client {
 
     /// Start the client, listening for new connections.
     pub async fn listen(mut self) -> Result<()> {
+        info!("started listener");
         let mut conn = self.conn.take().unwrap();
         let config = Arc::new(self.config);
+
         loop {
             match conn.recv().await? {
                 Some(ServerMessage::Hello(_)) => warn!("unexpected hello"),

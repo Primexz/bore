@@ -6,11 +6,11 @@ use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use tokio::io::{self, AsyncRead, AsyncWrite};
+use tokio::io::{self, copy_bidirectional, AsyncRead, AsyncWrite};
 
 use tokio::time::timeout;
 use tokio_util::codec::{AnyDelimiterCodec, Framed, FramedParts};
-use tracing::trace;
+use tracing::{info, trace};
 use uuid::Uuid;
 
 /// TCP port used for control connections with the server.
@@ -66,9 +66,9 @@ impl<U: AsyncRead + AsyncWrite + Unpin> Delimited<U> {
 
     /// Read the next null-delimited JSON instruction from a stream.
     pub async fn recv<T: DeserializeOwned>(&mut self) -> Result<Option<T>> {
-        trace!("waiting to receive json message");
         if let Some(next_message) = self.0.next().await {
             let byte_message = next_message.context("frame error, invalid byte length")?;
+            trace!("got json message: {:?}", byte_message);
             let serialized_obj = serde_json::from_slice(&byte_message.to_vec())
                 .context("unable to parse message")?;
             Ok(serialized_obj)
@@ -101,17 +101,12 @@ impl<U: AsyncRead + AsyncWrite + Unpin> Delimited<U> {
 }
 
 /// Copy data mutually between two read/write streams.
-pub async fn proxy<S1, S2>(stream1: S1, stream2: S2) -> io::Result<()>
+pub async fn proxy<S1, S2>(mut stream1: S1, mut stream2: S2) -> io::Result<()>
 where
     S1: AsyncRead + AsyncWrite + Unpin,
     S2: AsyncRead + AsyncWrite + Unpin,
 {
-    let (mut s1_read, mut s1_write) = io::split(stream1);
-    let (mut s2_read, mut s2_write) = io::split(stream2);
-    tokio::select! {
-        res = io::copy(&mut s1_read, &mut s2_write) => res,
-        res = io::copy(&mut s2_read, &mut s1_write) => res,
-    }?;
+    let _ = copy_bidirectional(&mut stream1, &mut stream2).await;
     Ok(())
 }
 

@@ -113,11 +113,12 @@ impl Server {
                 stream.send(ServerMessage::Hello(port)).await?;
 
                 loop {
+                    info!("sending connection heartbeat");
                     if stream.send(ServerMessage::Heartbeat).await.is_err() {
                         // Assume that the TCP connection has been dropped.
                         return Ok(());
                     }
-                    const TIMEOUT: Duration = Duration::from_millis(500);
+                    const TIMEOUT: Duration = Duration::from_millis(2000);
                     if let Ok(result) = timeout(TIMEOUT, listener.accept()).await {
                         let (stream2, addr) = result?;
                         info!(?addr, ?port, "new connection");
