@@ -85,13 +85,13 @@ fn load_certs(path: &PathBuf) -> io::Result<Vec<Certificate>> {
         .map(|mut certs| certs.drain(..).map(Certificate).collect())
 }
 
-fn load_keys(path: &PathBuf) -> PrivateKey {
+fn load_keys(path: &PathBuf) -> Result<PrivateKey> {
     let mut key_reader = std::io::BufReader::new(std::fs::File::open(path).unwrap());
     let key = rustls_pemfile::pkcs8_private_keys(&mut key_reader)
         .map_err(|_| error!("unable to load private key"))
         .unwrap()
         .remove(0);
-    return rustls::PrivateKey(key);
+    Ok(rustls::PrivateKey(key))
 }
 
 #[tokio::main]
@@ -170,7 +170,7 @@ async fn run(command: Command) -> Result<()> {
                         "cert path must be set, if tls is enabled",
                     )
                 })?)?;
-                let keys = load_keys(&key.unwrap());
+                let keys = load_keys(&key.unwrap())?;
 
                 let config = rustls::ServerConfig::builder()
                     .with_safe_defaults()

@@ -10,7 +10,7 @@ use tokio::io::{self, copy_bidirectional, AsyncRead, AsyncWrite};
 
 use tokio::time::timeout;
 use tokio_util::codec::{AnyDelimiterCodec, Framed, FramedParts};
-use tracing::{info, trace};
+use tracing::trace;
 use uuid::Uuid;
 
 /// TCP port used for control connections with the server.
@@ -69,8 +69,8 @@ impl<U: AsyncRead + AsyncWrite + Unpin> Delimited<U> {
         if let Some(next_message) = self.0.next().await {
             let byte_message = next_message.context("frame error, invalid byte length")?;
             trace!("got json message: {:?}", byte_message);
-            let serialized_obj = serde_json::from_slice(&byte_message.to_vec())
-                .context("unable to parse message")?;
+            let serialized_obj =
+                serde_json::from_slice(&byte_message).context("unable to parse message")?;
             Ok(serialized_obj)
         } else {
             Ok(None)
