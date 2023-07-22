@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use dashmap::DashMap;
+use snowstorm::{Builder, NoiseStream};
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{sleep, timeout};
@@ -57,13 +58,16 @@ impl Server {
         loop {
             let (stream, addr) = listener.accept().await?;
             let this = Arc::clone(&this);
-            let stream: Box<dyn StreamTrait> = match &this.tls {
-                Some(acceptor) => {
-                    let stream = acceptor.accept(stream).await?;
-                    Box::new(stream)
-                }
-                None => Box::new(stream),
-            };
+
+            let local_private_key =
+                base64::decode(&"2NmhCEVexQjzgSrXkNbiKXOeZbKQ9foDhUXAhFKL1HU=".as_bytes())?;
+            let builder = Builder::new("Noise_XX_25519_ChaChaPoly_BLAKE2s".parse().unwrap())
+                .local_private_key(&local_private_key);
+
+            let noise = NoiseStream::handshake(stream, builder.build_responder()?).await?;
+
+            let stream: Box<dyn StreamTrait> = Box::new(noise);
+
             tokio::spawn(
                 async move {
                     info!("incoming connection");
@@ -94,6 +98,7 @@ impl Server {
                 Ok(())
             }
             Some(ClientMessage::Hello(port)) => {
+                info!("got hello message");
                 if port != 0 && port < self.min_port {
                     warn!(?port, "client port number too low");
                     return Ok(());

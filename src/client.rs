@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
 
+use snowstorm::{Builder, NoiseStream};
 use tokio::io::AsyncWriteExt;
 use tokio::{net::TcpStream, time::timeout};
 use tokio_rustls::{rustls, TlsConnector};
@@ -67,7 +68,7 @@ impl Client {
         secret: Option<&str>,
         tls: Option<TlsConnector>,
     ) -> Result<Self> {
-        let mut stream = Delimited::new(connect_with_timeout(to, CONTROL_PORT, &tls).await?);
+        let mut stream = Delimited::new(connect_with_timeout_test(to, CONTROL_PORT, &tls).await?);
         let auth = secret.map(Authenticator::new);
         if let Some(auth) = &auth {
             auth.client_handshake(&mut stream).await?;
@@ -138,7 +139,7 @@ impl Client {
 
 async fn handle_connection(config: &ClientConfig, id: Uuid) -> Result<()> {
     let mut remote_conn =
-        Delimited::new(connect_with_timeout(&config.to[..], CONTROL_PORT, &config.tls).await?);
+        Delimited::new(connect_with_timeout_test(&config.to[..], CONTROL_PORT, &config.tls).await?);
     if let Some(auth) = &config.auth {
         auth.client_handshake(&mut remote_conn).await?;
     }
@@ -161,6 +162,7 @@ async fn connect_with_timeout(
         Err(err) => Err(err.into()),
     }
     .with_context(|| format!("could not connect to {to}:{port}"))?;
+
     match tls {
         Some(connector) => {
             let domain = rustls::ServerName::try_from(to)
@@ -170,5 +172,36 @@ async fn connect_with_timeout(
             Ok(Box::new(stream))
         }
         None => Ok(Box::new(stream)),
+    }
+}
+
+async fn connect_with_timeout_test(
+    to: &str,
+    port: u16,
+    tls: &Option<TlsConnector>,
+) -> Result<Box<dyn StreamTrait>> {
+    let stream = match timeout(NETWORK_TIMEOUT, TcpStream::connect((to, port))).await {
+        Ok(res) => res,
+        Err(err) => Err(err.into()),
+    }
+    .with_context(|| format!("could not connect to {to}:{port}"))?;
+
+    let local_private_key =
+        base64::decode(&"oMMF9F4UY6LhbJ3sFOCKTbKJ0+xGTTVSXoSZL+XeWmQ=".as_bytes())?;
+
+    let builder_base = Builder::new("Noise_XX_25519_ChaChaPoly_BLAKE2s".parse().unwrap());
+
+    let builder = builder_base.local_private_key(&local_private_key);
+    let noise = NoiseStream::handshake(stream, builder.build_initiator()?).await?;
+
+    match tls {
+        Some(connector) => {
+            let domain = rustls::ServerName::try_from(to)
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid dnsname"))?;
+
+            let stream = connector.connect(domain, noise).await?;
+            Ok(Box::new(stream))
+        }
+        None => Ok(Box::new(noise)),
     }
 }

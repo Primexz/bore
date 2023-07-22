@@ -69,13 +69,21 @@ enum Command {
         #[clap(long)]
         tls: bool,
 
-        /// Path to cert file.
+        /// Path to tls cert file.
         #[clap(long)]
         cert: Option<PathBuf>,
 
-        /// Path to key file.
+        /// Path to tls key file.
         #[clap(long)]
         key: Option<PathBuf>,
+
+        /// Enable tls support for the tunnel.
+        #[clap(long)]
+        noise: bool,
+
+        // Noise protocol local private key, encoded in base64
+        #[clap(long)]
+        noise_local_private_key: Option<String>,
     },
 }
 
@@ -162,7 +170,17 @@ async fn run(command: Command) -> Result<()> {
             tls,
             cert,
             key,
+            noise,
+            noise_local_private_key
         } => {
+            if tls && noise {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "tls and noise cannot be enabled at the same time",
+                )
+                .into());
+            }
+
             let server = if tls {
                 let certs = load_certs(&cert.ok_or_else(|| {
                     io::Error::new(
