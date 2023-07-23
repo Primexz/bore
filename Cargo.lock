@@ -111,7 +111,6 @@ dependencies = [
  "hex",
  "hmac",
  "lazy_static",
- "pin-project",
  "prometheus",
  "rstest",
  "rustls-pemfile",
