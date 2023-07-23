@@ -1,9 +1,5 @@
 use anyhow::{Ok, Result};
-use bore_cli::{
-    client::Client,
-    metrics::start_metric_server,
-    server::Server,
-};
+use bore_cli::{client::Client, metrics::start_metric_server, server::Server};
 use clap::{Parser, Subcommand};
 use rustls_pemfile::certs;
 use std::{
@@ -161,7 +157,7 @@ async fn run(command: Command) -> Result<()> {
                             error!("failed to create tls client: {:?}", err);
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                             continue;
-                        },
+                        }
                     }
                 } else {
                     match Client::new(&local_host, local_port, &to, port, secret.as_deref()).await {
@@ -170,7 +166,7 @@ async fn run(command: Command) -> Result<()> {
                             error!("failed to create tcp client: {:?}", err);
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                             continue;
-                        },
+                        }
                     }
                 };
 
