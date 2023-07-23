@@ -147,6 +147,7 @@ async fn handle_connection(config: &ClientConfig, id: Uuid) -> Result<()> {
     let parts = remote_conn.into_parts();
     debug_assert!(parts.write_buf.is_empty(), "framed write buffer not empty");
     local_conn.write_all(&parts.read_buf).await?; // mostly of the cases, this will be empty
+
     proxy(local_conn, parts.io).await?;
     Ok(())
 }

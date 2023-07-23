@@ -14,6 +14,7 @@ use tracing::{info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::auth::Authenticator;
+use crate::metrics::{CONNECTED_CLIENTS, HEARTBEATS};
 use crate::shared::{proxy, ClientMessage, Delimited, ServerMessage, StreamTrait, CONTROL_PORT};
 
 /// State structure for the server.
@@ -59,7 +60,13 @@ impl Server {
             let this = Arc::clone(&this);
             let stream: Box<dyn StreamTrait> = match &this.tls {
                 Some(acceptor) => {
-                    let stream = acceptor.accept(stream).await?;
+                    let stream = match acceptor.accept(stream).await {
+                        Ok(stream) => stream,
+                        Err(err) => {
+                            warn!(%err,"failed to accept tls connection");
+                            continue;
+                        }
+                    };
                     Box::new(stream)
                 }
                 None => Box::new(stream),
@@ -80,6 +87,7 @@ impl Server {
 
     async fn handle_connection(&self, stream: Box<dyn StreamTrait>) -> Result<()> {
         let mut stream = Delimited::new(stream);
+
         if let Some(auth) = &self.auth {
             if let Err(err) = auth.server_handshake(&mut stream).await {
                 warn!(%err, "server handshake failed");
@@ -98,6 +106,7 @@ impl Server {
                     warn!(?port, "client port number too low");
                     return Ok(());
                 }
+                CONNECTED_CLIENTS.inc();
                 info!(?port, "new client");
                 let listener = match TcpListener::bind(("0.0.0.0", port)).await {
                     Ok(listener) => listener,
@@ -106,6 +115,7 @@ impl Server {
                         stream
                             .send(ServerMessage::Error("port already in use".into()))
                             .await?;
+                        CONNECTED_CLIENTS.dec();
                         return Ok(());
                     }
                 };
@@ -114,8 +124,11 @@ impl Server {
 
                 loop {
                     info!("sending connection heartbeat");
+                    HEARTBEATS.inc();
+
                     if stream.send(ServerMessage::Heartbeat).await.is_err() {
                         // Assume that the TCP connection has been dropped.
+                        CONNECTED_CLIENTS.dec();
                         return Ok(());
                     }
                     const TIMEOUT: Duration = Duration::from_millis(2000);
@@ -145,14 +158,17 @@ impl Server {
                         let parts = stream.into_parts();
                         debug_assert!(parts.write_buf.is_empty(), "framed write buffer not empty");
                         stream2.write_all(&parts.read_buf).await?;
+
                         proxy(parts.io, stream2).await?
                     }
                     None => warn!(%id, "missing connection"),
                 }
+                CONNECTED_CLIENTS.dec();
                 Ok(())
             }
             None => {
                 warn!("unexpected EOF");
+                CONNECTED_CLIENTS.dec();
                 Ok(())
             }
         }

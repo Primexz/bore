@@ -1,19 +1,22 @@
+use anyhow::{Ok, Result};
+use bore_cli::{
+    client::Client,
+    metrics::start_metric_server,
+    server::Server,
+};
+use clap::{Parser, Subcommand};
+use rustls_pemfile::certs;
 use std::{
     fs::File,
     io::{self, BufReader},
     path::PathBuf,
     sync::Arc,
 };
-
-use anyhow::{Ok, Result};
-use bore_cli::{client::Client, server::Server};
-use clap::{Parser, Subcommand};
-use rustls_pemfile::certs;
 use tokio_rustls::{
     rustls::{self, Certificate, OwnedTrustAnchor, PrivateKey},
     webpki, TlsAcceptor, TlsConnector,
 };
-use tracing::{error, info};
+use tracing::{error, info, info_span, Instrument};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about)]
@@ -107,54 +110,78 @@ async fn run(command: Command) -> Result<()> {
             cafile,
         } => {
             info!("staring proxy client");
-            let client = if tls {
-                info!("using tls client");
-                let mut root_cert_store = rustls::RootCertStore::empty();
-                match &cafile {
-                    Some(cafile) => {
-                        let mut pem = BufReader::new(File::open(cafile)?);
-                        let certs = rustls_pemfile::certs(&mut pem)?;
-                        let trust_anchors = certs.iter().map(|cert| {
-                            let ta = webpki::TrustAnchor::try_from_cert_der(&cert[..]).unwrap();
-                            OwnedTrustAnchor::from_subject_spki_name_constraints(
-                                ta.subject,
-                                ta.spki,
-                                ta.name_constraints,
-                            )
-                        });
-                        root_cert_store.add_server_trust_anchors(trust_anchors);
-                    }
-                    None => {
-                        root_cert_store.add_server_trust_anchors(
-                            webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+            loop {
+                let client = if tls {
+                    info!("using tls client");
+                    let mut root_cert_store = rustls::RootCertStore::empty();
+                    match &cafile {
+                        Some(cafile) => {
+                            let mut pem = BufReader::new(File::open(cafile)?);
+                            let certs = rustls_pemfile::certs(&mut pem)?;
+                            let trust_anchors = certs.iter().map(|cert| {
+                                let ta = webpki::TrustAnchor::try_from_cert_der(&cert[..]).unwrap();
                                 OwnedTrustAnchor::from_subject_spki_name_constraints(
                                     ta.subject,
                                     ta.spki,
                                     ta.name_constraints,
                                 )
-                            }),
-                        );
+                            });
+                            root_cert_store.add_server_trust_anchors(trust_anchors);
+                        }
+                        None => {
+                            root_cert_store.add_server_trust_anchors(
+                                webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+                                    OwnedTrustAnchor::from_subject_spki_name_constraints(
+                                        ta.subject,
+                                        ta.spki,
+                                        ta.name_constraints,
+                                    )
+                                }),
+                            );
+                        }
                     }
+                    let config = rustls::ClientConfig::builder()
+                        .with_safe_defaults()
+                        .with_root_certificates(root_cert_store)
+                        .with_no_client_auth(); // i guess this was previously the default?
+                    let connector = TlsConnector::from(Arc::new(config));
+
+                    match Client::new_with_tls(
+                        &local_host,
+                        local_port,
+                        &to,
+                        port,
+                        secret.as_deref(),
+                        Some(connector),
+                    )
+                    .await
+                    {
+                        std::result::Result::Ok(client) => client,
+                        Err(err) => {
+                            error!("failed to create tls client: {:?}", err);
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            continue;
+                        },
+                    }
+                } else {
+                    match Client::new(&local_host, local_port, &to, port, secret.as_deref()).await {
+                        std::result::Result::Ok(client) => client,
+                        Err(err) => {
+                            error!("failed to create tcp client: {:?}", err);
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            continue;
+                        },
+                    }
+                };
+
+                match client.listen().await {
+                    std::result::Result::Ok(_) => info!("client exited"),
+                    Err(err) => error!("client exited with error: {:?}", err),
                 }
-                let config = rustls::ClientConfig::builder()
-                    .with_safe_defaults()
-                    .with_root_certificates(root_cert_store)
-                    .with_no_client_auth(); // i guess this was previously the default?
-                let connector = TlsConnector::from(Arc::new(config));
-                Client::new_with_tls(
-                    &local_host,
-                    local_port,
-                    &to,
-                    port,
-                    secret.as_deref(),
-                    Some(connector),
-                )
-                .await?
-            } else {
-                info!("using plain tcp");
-                Client::new(&local_host, local_port, &to, port, secret.as_deref()).await?
-            };
-            client.listen().await?;
+
+                error!("client exited");
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
         }
         Command::Server {
             min_port,
@@ -163,6 +190,13 @@ async fn run(command: Command) -> Result<()> {
             cert,
             key,
         } => {
+            tokio::spawn(
+                async move {
+                    start_metric_server().await;
+                }
+                .instrument(info_span!("metrics")),
+            );
+
             let server = if tls {
                 let certs = load_certs(&cert.ok_or_else(|| {
                     io::Error::new(
