@@ -10,11 +10,11 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{sleep, timeout};
 use tokio_rustls::TlsAcceptor;
-use tracing::{info, info_span, warn, Instrument};
+use tracing::{debug, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::auth::Authenticator;
-use crate::metrics::{CONNECTED_CLIENTS, HEARTBEATS, DATA_CHANNELS};
+use crate::metrics::{CONNECTED_CLIENTS, HEARTBEATS, TOTAL_CONNECTIONS};
 use crate::shared::{proxy, ClientMessage, Delimited, ServerMessage, StreamTrait, CONTROL_PORT};
 
 /// State structure for the server.
@@ -74,13 +74,13 @@ impl Server {
             tokio::spawn(
                 async move {
                     info!("incoming connection");
-                    DATA_CHANNELS.inc();
+                    TOTAL_CONNECTIONS.inc();
                     if let Err(err) = this.handle_connection(stream).await {
                         warn!(%err, "connection exited with error");
                     } else {
                         info!("connection exited");
                     }
-                    DATA_CHANNELS.dec();
+                    TOTAL_CONNECTIONS.dec();
                 }
                 .instrument(info_span!("control", ?addr)),
             );
@@ -125,7 +125,7 @@ impl Server {
                 stream.send(ServerMessage::Hello(port)).await?;
 
                 loop {
-                    info!("sending connection heartbeat");
+                    debug!("sending connection heartbeat");
                     HEARTBEATS.inc();
 
                     if stream.send(ServerMessage::Heartbeat).await.is_err() {

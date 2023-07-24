@@ -7,8 +7,7 @@ use warp::Filter;
 
 lazy_static! {
     /// Count of total control channel connections
-    pub static ref DATA_CHANNELS: IntGauge = IntGauge::new("data_channels", "Total Data Channels opened").expect("metric can be created");
-
+    pub static ref TOTAL_CONNECTIONS: IntGauge = IntGauge::new("total_connections", "Total TCP connections").expect("metric can be created");
 
     /// Count of total client connections
     pub static ref CONNECTED_CLIENTS: IntGauge = IntGauge::new("connected_clients", "Connected Clients").expect("metric can be created");
@@ -55,9 +54,8 @@ pub async fn start_metric_server() {
 
 /// Function to register the prometheus metrics
 fn register_metrics() {
-
     REGISTRY
-        .register(Box::new(DATA_CHANNELS.clone()))
+        .register(Box::new(TOTAL_CONNECTIONS.clone()))
         .expect("failed to register metric");
 
     REGISTRY
