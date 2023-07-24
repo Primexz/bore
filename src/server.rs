@@ -14,7 +14,7 @@ use tracing::{info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::auth::Authenticator;
-use crate::metrics::{CONNECTED_CLIENTS, HEARTBEATS};
+use crate::metrics::{CONNECTED_CLIENTS, HEARTBEATS, DATA_CHANNELS};
 use crate::shared::{proxy, ClientMessage, Delimited, ServerMessage, StreamTrait, CONTROL_PORT};
 
 /// State structure for the server.
@@ -74,11 +74,13 @@ impl Server {
             tokio::spawn(
                 async move {
                     info!("incoming connection");
+                    DATA_CHANNELS.inc();
                     if let Err(err) = this.handle_connection(stream).await {
                         warn!(%err, "connection exited with error");
                     } else {
                         info!("connection exited");
                     }
+                    DATA_CHANNELS.dec();
                 }
                 .instrument(info_span!("control", ?addr)),
             );
