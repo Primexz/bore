@@ -1,7 +1,7 @@
 //! Metrics for the server
 
 use lazy_static::lazy_static;
-use prometheus::{IntCounter, IntGauge, Registry};
+use prometheus::{Counter, IntCounter, IntGauge, Opts, Registry};
 use tracing::info;
 use warp::Filter;
 
@@ -14,6 +14,16 @@ lazy_static! {
 
     /// Count of heartbets sent
     pub static ref HEARTBEATS: IntCounter = IntCounter::new("heartbeats", "Count of total Heartbeats sent").expect("metric can be created");
+
+    /// Metric for incoming bytes
+    pub static ref INCOMING_BYTES: Counter =
+        Counter::with_opts(Opts::new("incoming_bytes", "Total incoming bytes"))
+            .expect("metric can be created");
+
+    /// Metric for outgoing bytes
+    pub static ref OUTGOING_BYTES: Counter =
+        Counter::with_opts(Opts::new("outgoing_bytes", "Total outgoing bytes"))
+            .expect("metric can be created");
 
     /// Main registry for prometheus
     pub static ref REGISTRY: Registry = Registry::new();
@@ -64,5 +74,13 @@ fn register_metrics() {
 
     REGISTRY
         .register(Box::new(HEARTBEATS.clone()))
+        .expect("failed to register metric");
+
+    REGISTRY
+        .register(Box::new(INCOMING_BYTES.clone()))
+        .expect("failed to register metric");
+
+    REGISTRY
+        .register(Box::new(OUTGOING_BYTES.clone()))
         .expect("failed to register metric");
 }

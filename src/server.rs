@@ -14,6 +14,7 @@ use tracing::{debug, info, info_span, warn, Instrument};
 use uuid::Uuid;
 
 use crate::auth::Authenticator;
+use crate::byte_counter;
 use crate::metrics::{CONNECTED_CLIENTS, HEARTBEATS, TOTAL_CONNECTIONS};
 use crate::shared::{proxy, ClientMessage, Delimited, ServerMessage, StreamTrait, CONTROL_PORT};
 
@@ -161,7 +162,8 @@ impl Server {
                         debug_assert!(parts.write_buf.is_empty(), "framed write buffer not empty");
                         stream2.write_all(&parts.read_buf).await?;
 
-                        proxy(parts.io, stream2).await?
+                        let stream = byte_counter::CountingStream::new(parts.io);
+                        proxy(stream, stream2).await?
                     }
                     None => warn!(%id, "missing connection"),
                 }

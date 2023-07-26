@@ -16,6 +16,7 @@
 #![warn(missing_docs)]
 
 pub mod auth;
+pub mod byte_counter;
 pub mod client;
 pub mod metrics;
 pub mod server;
