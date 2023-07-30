@@ -1,7 +1,7 @@
 //! Metrics for the server
 
 use lazy_static::lazy_static;
-use prometheus::{Counter, IntCounter, IntGauge, Opts, Registry};
+use prometheus::{IntCounter, IntGauge, Registry};
 use tracing::info;
 use warp::Filter;
 
@@ -16,13 +16,23 @@ lazy_static! {
     pub static ref HEARTBEATS: IntCounter = IntCounter::new("heartbeats", "Count of total Heartbeats sent").expect("metric can be created");
 
     /// Metric for incoming bytes
-    pub static ref INCOMING_BYTES: Counter =
-        Counter::with_opts(Opts::new("incoming_bytes", "Total incoming bytes"))
+    pub static ref INCOMING_BYTES: IntCounter =
+    IntCounter::new("incoming_bytes", "Total incoming bytes")
             .expect("metric can be created");
 
     /// Metric for outgoing bytes
-    pub static ref OUTGOING_BYTES: Counter =
-        Counter::with_opts(Opts::new("outgoing_bytes", "Total outgoing bytes"))
+    pub static ref OUTGOING_BYTES: IntCounter =
+      IntCounter::new("outgoing_bytes", "Total outgoing bytes")
+            .expect("metric can be created");
+
+    /// Metric for incoming bytes per second
+    pub static ref INCOMING_BYTES_PER_SECOND: IntGauge =
+    IntGauge::new("incoming_bytes_per_second", "Incoming bytes per second")
+            .expect("metric can be created");
+
+    /// Metric for outgoing bytes per second
+    pub static ref OUTGOING_BYTES_PER_SECOND: IntGauge =
+    IntGauge::new("outgoing_bytes_per_second", "Outgoing bytes per second")
             .expect("metric can be created");
 
     /// Main registry for prometheus
@@ -47,6 +57,8 @@ pub fn metrics_handler() -> String {
     };
     let res_custom = String::from_utf8(buffer.clone()).unwrap();
     buffer.clear();
+
+    info!("computed metric request");
 
     res.push_str(&res_custom);
     res
@@ -83,4 +95,12 @@ fn register_metrics() {
     REGISTRY
         .register(Box::new(OUTGOING_BYTES.clone()))
         .expect("failed to register metric");
+
+    REGISTRY
+        .register(Box::new(INCOMING_BYTES_PER_SECOND.clone()))
+        .expect("failed to register metric");
+
+    REGISTRY
+        .register(Box::new(OUTGOING_BYTES_PER_SECOND.clone()))
+        .expect("failed to register metric")
 }

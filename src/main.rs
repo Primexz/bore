@@ -1,5 +1,8 @@
 use anyhow::{Ok, Result};
-use bore_cli::{client::Client, metrics::start_metric_server, server::Server};
+use bore_cli::{
+    byte_counter::bytes_per_second_calculator, client::Client, metrics::start_metric_server,
+    server::Server,
+};
 use clap::{Parser, Subcommand};
 use rustls_pemfile::certs;
 use std::{
@@ -192,6 +195,7 @@ async fn run(command: Command) -> Result<()> {
                 }
                 .instrument(info_span!("metrics")),
             );
+            bytes_per_second_calculator();
 
             let server = if tls {
                 let certs = load_certs(&cert.ok_or_else(|| {
