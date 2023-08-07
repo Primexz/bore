@@ -1,0 +1,10 @@
+apiVersion: 1
+
+datasources:
+  - name: Bore Prometheus
+    type: prometheus
+    url: http://localhost:9090
+    basicAuthPassword:
+    version: 1
+    uid: pLiOfK64k
+    editable: false
