@@ -30,7 +30,7 @@ impl<S: AsyncRead + Unpin> AsyncRead for CountingStream<S> {
 
         match Pin::new(&mut this.inner).poll_read(cx, buf) {
             Poll::Ready(Ok(_)) => {
-                metrics::INCOMING_BYTES.inc_by(buf.filled().len() as i64);
+                metrics::INCOMING_BYTES.inc_by(buf.filled().len() as u64);
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
@@ -44,7 +44,7 @@ impl<S: AsyncWrite + Unpin> AsyncWrite for CountingStream<S> {
         let this = self.get_mut();
         match Pin::new(&mut this.inner).poll_write(cx, buf) {
             Poll::Ready(Ok(n)) => {
-                metrics::OUTGOING_BYTES.inc_by(n as i64);
+                metrics::OUTGOING_BYTES.inc_by(n as u64);
                 Poll::Ready(Ok(n))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
@@ -74,8 +74,8 @@ pub fn bytes_per_second_calculator() {
             let bytes_per_second_out = new_bytes_out - old_bytes_out;
             let bytes_per_second_in = new_bytes_in - old_bytes_in;
 
-            metrics::OUTGOING_BYTES_PER_SECOND.set(bytes_per_second_out);
-            metrics::INCOMING_BYTES_PER_SECOND.set(bytes_per_second_in);
+            metrics::OUTGOING_BYTES_PER_SECOND.set(bytes_per_second_out as i64);
+            metrics::INCOMING_BYTES_PER_SECOND.set(bytes_per_second_in as i64);
 
             debug!("{}", "-".repeat(25));
             debug!("bytes per second out: {}", bytes_per_second_out);
