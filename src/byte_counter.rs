@@ -1,12 +1,10 @@
 //! A module to count bytes read and written in tcp streams.
 
+use crate::metrics;
 use std::io::Result as IoResult;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tracing::debug;
-
-use crate::metrics;
 
 /// Wrapper around a streams that counts bytes read and written.
 pub struct CountingStream<S> {
