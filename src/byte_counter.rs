@@ -77,11 +77,6 @@ pub fn bytes_per_second_calculator() {
             metrics::OUTGOING_BYTES_PER_SECOND.set(bytes_per_second_out as i64);
             metrics::INCOMING_BYTES_PER_SECOND.set(bytes_per_second_in as i64);
 
-            debug!("{}", "-".repeat(25));
-            debug!("bytes per second out: {}", bytes_per_second_out);
-            debug!("bytes per second in: {}", bytes_per_second_in);
-            debug!("{}", "-".repeat(25));
-
             old_bytes_out = new_bytes_out;
             old_bytes_in = new_bytes_in;
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
