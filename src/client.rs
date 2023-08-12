@@ -52,10 +52,9 @@ impl Client {
         local_host: &str,
         local_port: u16,
         to: &str,
-        port: u16,
         secret: Option<&str>,
     ) -> Result<Self> {
-        Client::new_with_tls(local_host, local_port, to, port, secret, None).await
+        Client::new_with_tls(local_host, local_port, to, secret, None).await
     }
 
     /// Create a new client with tls is configurable.
@@ -63,7 +62,6 @@ impl Client {
         local_host: &str,
         local_port: u16,
         to: &str,
-        port: u16,
         secret: Option<&str>,
         tls: Option<TlsConnector>,
     ) -> Result<Self> {
@@ -74,7 +72,7 @@ impl Client {
         }
 
         info!("sending hello message to server");
-        stream.send(ClientMessage::Hello(port)).await?;
+        stream.send(ClientMessage::Hello()).await?;
         let remote_port = match stream.recv_timeout().await? {
             Some(ServerMessage::Hello(remote_port)) => remote_port,
             Some(ServerMessage::Error(message)) => bail!("server error: {message}"),

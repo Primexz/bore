@@ -20,9 +20,6 @@ use crate::shared::{proxy, ClientMessage, Delimited, ServerMessage, StreamTrait,
 
 /// State structure for the server.
 pub struct Server {
-    /// The minimum TCP port that can be forwarded.
-    min_port: u16,
-
     /// Optional secret used to authenticate clients.
     auth: Option<Authenticator>,
 
@@ -35,14 +32,13 @@ pub struct Server {
 
 impl Server {
     /// Create a new server with a specified minimum port number.
-    pub fn new(min_port: u16, secret: Option<&str>) -> Self {
-        Server::new_with_tls(min_port, secret, None)
+    pub fn new(secret: Option<&str>) -> Self {
+        Server::new_with_tls(secret, None)
     }
 
     /// Create a new server with a specified minimum port number and tls is configurable.
-    pub fn new_with_tls(min_port: u16, secret: Option<&str>, tls: Option<TlsAcceptor>) -> Self {
+    pub fn new_with_tls(secret: Option<&str>, tls: Option<TlsAcceptor>) -> Self {
         Server {
-            min_port,
             conns: Arc::new(DashMap::new()),
             auth: secret.map(Authenticator::new),
             tls,
@@ -104,17 +100,15 @@ impl Server {
                 warn!("unexpected authenticate");
                 Ok(())
             }
-            Some(ClientMessage::Hello(port)) => {
-                if port != 0 && port < self.min_port {
-                    warn!(?port, "client port number too low");
-                    return Ok(());
-                }
+            Some(ClientMessage::Hello()) => {
                 CONNECTED_CLIENTS.inc();
-                info!(?port, "new client");
-                let listener = match TcpListener::bind(("0.0.0.0", port)).await {
+                info!("new client connected");
+
+                // ask the kernel for a available port
+                let listener = match TcpListener::bind(("0.0.0.0", 0)).await {
                     Ok(listener) => listener,
                     Err(_) => {
-                        warn!(?port, "could not bind to local port");
+                        warn!("could not bind to local port");
                         stream
                             .send(ServerMessage::Error("port already in use".into()))
                             .await?;
@@ -181,6 +175,6 @@ impl Server {
 
 impl Default for Server {
     fn default() -> Self {
-        Server::new(1024, None)
+        Server::new(None)
     }
 }

@@ -40,10 +40,6 @@ enum Command {
         #[clap(short, long)]
         to: String,
 
-        /// Optional port on the remote server to select.
-        #[clap(short, long, default_value_t = 0)]
-        port: u16,
-
         /// Optional secret for authentication.
         #[clap(short, long, env = "BORE_SECRET", hide_env_values = true)]
         secret: Option<String>,
@@ -59,10 +55,6 @@ enum Command {
 
     /// Runs the remote proxy server.
     Server {
-        /// Minimum TCP port number to accept.
-        #[clap(long, default_value_t = 1024)]
-        min_port: u16,
-
         /// Optional secret for authentication.
         #[clap(short, long, env = "BORE_SECRET", hide_env_values = true)]
         secret: Option<String>,
@@ -103,7 +95,6 @@ async fn run(command: Command) -> Result<()> {
             local_host,
             local_port,
             to,
-            port,
             secret,
             tls,
             cafile,
@@ -149,7 +140,6 @@ async fn run(command: Command) -> Result<()> {
                         &local_host,
                         local_port,
                         &to,
-                        port,
                         secret.as_deref(),
                         Some(connector),
                     )
@@ -163,7 +153,7 @@ async fn run(command: Command) -> Result<()> {
                         }
                     }
                 } else {
-                    match Client::new(&local_host, local_port, &to, port, secret.as_deref()).await {
+                    match Client::new(&local_host, local_port, &to, secret.as_deref()).await {
                         std::result::Result::Ok(client) => client,
                         Err(err) => {
                             error!("failed to create tcp client: {:?}", err);
@@ -183,7 +173,6 @@ async fn run(command: Command) -> Result<()> {
             }
         }
         Command::Server {
-            min_port,
             secret,
             tls,
             cert,
@@ -212,9 +201,9 @@ async fn run(command: Command) -> Result<()> {
                     .with_single_cert(certs, keys)
                     .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
                 let acceptor = TlsAcceptor::from(Arc::new(config));
-                Server::new_with_tls(min_port, secret.as_deref(), Some(acceptor))
+                Server::new_with_tls(secret.as_deref(), Some(acceptor))
             } else {
-                Server::new(min_port, secret.as_deref())
+                Server::new(secret.as_deref())
             };
             server.listen().await?;
         }
