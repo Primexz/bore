@@ -161,12 +161,10 @@ impl Server {
                     }
                     None => warn!(%id, "missing connection"),
                 }
-                CONNECTED_CLIENTS.dec();
                 Ok(())
             }
             None => {
                 warn!("unexpected EOF");
-                CONNECTED_CLIENTS.dec();
                 Ok(())
             }
         }
